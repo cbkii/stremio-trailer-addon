@@ -3,6 +3,27 @@ const fetch = require('node-fetch');
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
+// Language preference: list one or more ISO 639-1 language codes in priority order.
+// The first code listed is the highest priority. English is the default.
+// Examples:
+//   'en'  - English        'es'  - Spanish       'pt'  - Portuguese
+//   'fr'  - French         'it'  - Italian        'nl'  - Dutch
+//   'de'  - German         'id'  - Indonesian     'hi'  - Hindi
+//   'zh'  - Chinese        'ko'  - Korean         'ja'  - Japanese
+//   'no'  - Norwegian      'sv'  - Swedish
+const LANGUAGE_PREF = (process.env.LANGUAGE_PREF || 'en')
+    .split(',')
+    .map(l => l.trim())
+    .filter(Boolean);
+
+// Language strictness: set to 1 (or any truthy value) to only return results
+// that match LANGUAGE_PREF. When disabled (0 / falsy, the default), preferred
+// languages are prioritised but a "next best" result in any language is still
+// returned when no preferred-language match is found.
+const LANGUAGE_STRICT = ['1', 'true', 'yes'].includes(
+    (process.env.LANGUAGE_STRICT || '').toLowerCase()
+);
+
 const manifest = {
     id: 'com.trailers.youtube.addon',
     version: '1.0.1',
@@ -62,34 +83,45 @@ async function getTMDBTrailer(tmdbId, mediaType) {
         const data = await response.json();
         
         const results = data.results || [];
+        const prefLang = v => LANGUAGE_PREF.includes(v.iso_639_1);
 
-        // Priority 1: Official Trailer in English or Portuguese
-        const trailer = results.find(v => 
-            v.type === 'Trailer' && 
-            v.site === 'YouTube' && 
-            (v.iso_639_1 === 'en' || v.iso_639_1 === 'pt')
+        // Priority 1: Trailer in a preferred language
+        const trailer = results.find(v =>
+            v.type === 'Trailer' &&
+            v.site === 'YouTube' &&
+            prefLang(v)
         );
         if (trailer) return `https://www.youtube.com/watch?v=${trailer.key}`;
 
-        // Priority 2: Any Trailer on YouTube
-        const anyTrailer = results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
-        if (anyTrailer) return `https://www.youtube.com/watch?v=${anyTrailer.key}`;
+        // Priority 2: Any Trailer on YouTube (skipped when strict)
+        if (!LANGUAGE_STRICT) {
+            const anyTrailer = results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+            if (anyTrailer) return `https://www.youtube.com/watch?v=${anyTrailer.key}`;
+        }
 
-        // Priority 3: Teaser in English or Portuguese
+        // Priority 3: Teaser in a preferred language
         const teaser = results.find(v =>
             v.type === 'Teaser' &&
             v.site === 'YouTube' &&
-            (v.iso_639_1 === 'en' || v.iso_639_1 === 'pt')
+            prefLang(v)
         );
         if (teaser) return `https://www.youtube.com/watch?v=${teaser.key}`;
 
-        // Priority 4: Any Teaser on YouTube
-        const anyTeaser = results.find(v => v.type === 'Teaser' && v.site === 'YouTube');
-        if (anyTeaser) return `https://www.youtube.com/watch?v=${anyTeaser.key}`;
+        // Priority 4: Any Teaser on YouTube (skipped when strict)
+        if (!LANGUAGE_STRICT) {
+            const anyTeaser = results.find(v => v.type === 'Teaser' && v.site === 'YouTube');
+            if (anyTeaser) return `https://www.youtube.com/watch?v=${anyTeaser.key}`;
+        }
 
-        // Priority 5: Any YouTube video (Clip, Featurette, etc.)
-        const anyVideo = results.find(v => v.site === 'YouTube');
-        if (anyVideo) return `https://www.youtube.com/watch?v=${anyVideo.key}`;
+        // Priority 5: Any YouTube video in a preferred language
+        const prefVideo = results.find(v => v.site === 'YouTube' && prefLang(v));
+        if (prefVideo) return `https://www.youtube.com/watch?v=${prefVideo.key}`;
+
+        // Priority 6: Any YouTube video (skipped when strict)
+        if (!LANGUAGE_STRICT) {
+            const anyVideo = results.find(v => v.site === 'YouTube');
+            if (anyVideo) return `https://www.youtube.com/watch?v=${anyVideo.key}`;
+        }
         
         return null;
     } catch (error) {
