@@ -21,6 +21,15 @@ const manifest = {
     }
 };
 
+function extractYear(dateString) {
+    if (typeof dateString !== 'string') return null;
+    const m = dateString.match(/^(\d{4})/);
+    if (!m) return null;
+    const year = parseInt(m[1], 10);
+    if (year < 1888 || year > 9999) return null;
+    return m[1];
+}
+
 async function getTMDBInfo(imdbId, type) {
     if (!TMDB_API_KEY) return null;
     
@@ -30,9 +39,11 @@ async function getTMDBInfo(imdbId, type) {
         const data = await response.json();
         
         if (type === 'movie' && data.movie_results && data.movie_results.length > 0) {
-            return { id: data.movie_results[0].id, name: data.movie_results[0].title, type: 'movie' };
+            const movie = data.movie_results[0];
+            return { id: movie.id, name: movie.title, type: 'movie', year: extractYear(movie.release_date) };
         } else if (type === 'series' && data.tv_results && data.tv_results.length > 0) {
-            return { id: data.tv_results[0].id, name: data.tv_results[0].name, type: 'tv' };
+            const series = data.tv_results[0];
+            return { id: series.id, name: series.name, type: 'tv', year: extractYear(series.first_air_date) };
         }
         
         return null;
@@ -50,21 +61,72 @@ async function getTMDBTrailer(tmdbId, mediaType) {
         const response = await fetch(url);
         const data = await response.json();
         
-        const trailer = data.results.find(v => 
+        const results = data.results || [];
+
+        // Priority 1: Official Trailer in English or Portuguese
+        const trailer = results.find(v => 
             v.type === 'Trailer' && 
             v.site === 'YouTube' && 
             (v.iso_639_1 === 'en' || v.iso_639_1 === 'pt')
-        ) || data.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
-        
-        if (trailer) {
-            return `https://www.youtube.com/watch?v=${trailer.key}`;
-        }
+        );
+        if (trailer) return `https://www.youtube.com/watch?v=${trailer.key}`;
+
+        // Priority 2: Any Trailer on YouTube
+        const anyTrailer = results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+        if (anyTrailer) return `https://www.youtube.com/watch?v=${anyTrailer.key}`;
+
+        // Priority 3: Teaser in English or Portuguese
+        const teaser = results.find(v =>
+            v.type === 'Teaser' &&
+            v.site === 'YouTube' &&
+            (v.iso_639_1 === 'en' || v.iso_639_1 === 'pt')
+        );
+        if (teaser) return `https://www.youtube.com/watch?v=${teaser.key}`;
+
+        // Priority 4: Any Teaser on YouTube
+        const anyTeaser = results.find(v => v.type === 'Teaser' && v.site === 'YouTube');
+        if (anyTeaser) return `https://www.youtube.com/watch?v=${anyTeaser.key}`;
+
+        // Priority 5: Any YouTube video (Clip, Featurette, etc.)
+        const anyVideo = results.find(v => v.site === 'YouTube');
+        if (anyVideo) return `https://www.youtube.com/watch?v=${anyVideo.key}`;
         
         return null;
     } catch (error) {
         console.error('Error getting TMDB trailer:', error);
         return null;
     }
+}
+
+function buildFallbackSearchStreams(name, year) {
+    const streams = [];
+
+    if (year) {
+        const queryWithTrailer = `${name} ${year} trailer`;
+        const queryBroad = `${name} (${year})`;
+        streams.push({
+            name: '🔍 Search Trailer (Title + Year)',
+            title: `Search: "${queryWithTrailer}"`,
+            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(queryWithTrailer)}`,
+            behaviorHints: { notWebReady: true, bingeGroup: 'trailer' }
+        });
+        streams.push({
+            name: '🎬 Search on YouTube',
+            title: `Search: "${queryBroad}"`,
+            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(queryBroad)}`,
+            behaviorHints: { notWebReady: true, bingeGroup: 'trailer' }
+        });
+    } else {
+        const query = `${name} official trailer`;
+        streams.push({
+            name: '🔍 Search Trailer',
+            title: `Search for "${query}"`,
+            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+            behaviorHints: { notWebReady: true, bingeGroup: 'trailer' }
+        });
+    }
+
+    return streams;
 }
 
 const addonInterface = {
@@ -105,17 +167,7 @@ const addonInterface = {
                         }]
                     };
                 } else {
-                    return {
-                        streams: [{
-                            name: '🔍 Search Trailer',
-                            title: `Search for "${tmdbInfo.name}" trailer`,
-                            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(tmdbInfo.name + ' official trailer')}`,
-                            behaviorHints: { 
-                                notWebReady: true,
-                                bingeGroup: 'trailer'
-                            }
-                        }]
-                    };
+                    return { streams: buildFallbackSearchStreams(tmdbInfo.name, tmdbInfo.year) };
                 }
             } catch (error) {
                 console.error('Error:', error);
