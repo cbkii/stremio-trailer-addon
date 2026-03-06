@@ -22,7 +22,12 @@ const manifest = {
 };
 
 function extractYear(dateString) {
-    return dateString ? dateString.split('-')[0] : null;
+    if (typeof dateString !== 'string') return null;
+    const m = dateString.match(/^(\d{4})/);
+    if (!m) return null;
+    const year = parseInt(m[1], 10);
+    if (year < 1888 || year > 9999) return null;
+    return m[1];
 }
 
 async function getTMDBInfo(imdbId, type) {
