@@ -12,8 +12,8 @@ const manifest = {
     types: ['movie', 'series'],
     catalogs: [],
     idPrefixes: ['tt'],
-    background: 'https://images.unsplash.com/photo-1574267432644-f05f41dc1799?w=1920&h=1080&fit=crop',
-    logo: 'https://cdn-icons-png.flaticon.com/512/1384/1384060.png',
+    background: 'https://www.gstatic.com/marketing-cms/assets/images/99/75/ba9b20c04dc2b37c7165e70ba215/external-icon-core-2.png%3Dn-w908-h511-fcrop64%3D1%2C00000000ffffffff-rw',
+    logo: 'https://developers.google.com/static/youtube/images/developed-with-youtube-sentence-case-light.png',
     // Certificação Stremio Addons
     stremioAddonsConfig: {
         issuer: 'https://stremio-addons.net',
