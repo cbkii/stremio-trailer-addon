@@ -3,11 +3,36 @@ const fetch = require('node-fetch');
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
+// Language preference: comma-separated ISO 639-1 language codes in priority order.
+// The FIRST code listed has the highest priority — when multiple preferred languages
+// are available, the one listed earliest is always returned first. English is the default.
+// Examples:
+//   'en'  - English        'es'  - Spanish       'pt'  - Portuguese
+//   'fr'  - French         'it'  - Italian        'nl'  - Dutch
+//   'de'  - German         'id'  - Indonesian     'hi'  - Hindi
+//   'zh'  - Chinese        'ko'  - Korean         'ja'  - Japanese
+//   'no'  - Norwegian      'sv'  - Swedish
+const LANGUAGE_PREF = (() => {
+    const parsed = (process.env.LANGUAGE_PREF || 'en')
+        .split(',')
+        .map(code => code.trim().toLowerCase())
+        .filter(Boolean);
+    return parsed.length > 0 ? parsed : ['en'];
+})();
+
+// Language strictness: set to 1 (or any truthy value) to only return results
+// that match LANGUAGE_PREF. When disabled (0 / falsy, the default), preferred
+// languages are prioritised but a "next best" result in any language is still
+// returned when no preferred-language match is found.
+const LANGUAGE_STRICT = ['1', 'true', 'yes'].includes(
+    (process.env.LANGUAGE_STRICT || '').toLowerCase()
+);
+
 const manifest = {
     id: 'com.trailers.youtube.addon',
     version: '1.0.1',
     name: 'YouTube Trailers',
-    description: 'Direct links to YouTube trailers - No buffering!',
+    description: 'Direct link YouTube trailers and teasers (with fallbacks)',
     resources: ['stream'],
     types: ['movie', 'series'],
     catalogs: [],
@@ -20,6 +45,22 @@ const manifest = {
         signature: 'eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..pB-EC9zlZduz6a-zU0OxsQ.R_CydhOhJx12LAA6b5K_c7GxYcxMu0e1FlAGC9elpvhCZJPtVMwdsTEnbMXROVZL9FNBERr9Z2kF45wFQN7uLN5fHXV3MmSqGmO2hHnic-oc3vcbzQ0rl2LUmo8uTXM8.1uu_6hsolyXULB6kmaghdQ'
     }
 };
+
+// ---- Shared stream helpers ----
+
+const STREAM_HINTS = { notWebReady: true, bingeGroup: 'trailer' };
+
+function ytWatchUrl(key) {
+    return `https://www.youtube.com/watch?v=${key}`;
+}
+
+function ytSearchUrl(query) {
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+}
+
+function makeStream(name, title, externalUrl) {
+    return { name, title, externalUrl, behaviorHints: STREAM_HINTS };
+}
 
 function extractYear(dateString) {
     if (typeof dateString !== 'string') return null;
@@ -63,35 +104,29 @@ async function getTMDBTrailer(tmdbId, mediaType) {
         
         const results = data.results || [];
 
-        // Priority 1: Official Trailer in English or Portuguese
-        const trailer = results.find(v => 
-            v.type === 'Trailer' && 
-            v.site === 'YouTube' && 
-            (v.iso_639_1 === 'en' || v.iso_639_1 === 'pt')
-        );
-        if (trailer) return `https://www.youtube.com/watch?v=${trailer.key}`;
+        // Returns the first result matching predicate, honoring LANGUAGE_PREF order:
+        // iterates preferred languages in declared order so the highest-priority
+        // language always wins, regardless of the order TMDB returns results.
+        const findPreferred = predicate => {
+            for (const lang of LANGUAGE_PREF) {
+                const match = results.find(v => predicate(v) && v.iso_639_1 === lang);
+                if (match) return match;
+            }
+            return undefined;
+        };
 
-        // Priority 2: Any Trailer on YouTube
-        const anyTrailer = results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
-        if (anyTrailer) return `https://www.youtube.com/watch?v=${anyTrailer.key}`;
+        // Returns the best match for predicate: preferred-language first,
+        // then any-language fallback (unless LANGUAGE_STRICT is enabled).
+        const pickVideo = predicate =>
+            findPreferred(predicate) || (!LANGUAGE_STRICT ? results.find(predicate) : undefined);
 
-        // Priority 3: Teaser in English or Portuguese
-        const teaser = results.find(v =>
-            v.type === 'Teaser' &&
-            v.site === 'YouTube' &&
-            (v.iso_639_1 === 'en' || v.iso_639_1 === 'pt')
-        );
-        if (teaser) return `https://www.youtube.com/watch?v=${teaser.key}`;
+        const isYT      = v => v.site === 'YouTube';
+        const isTrailer = v => v.type === 'Trailer' && isYT(v);
+        const isTeaser  = v => v.type === 'Teaser'  && isYT(v);
 
-        // Priority 4: Any Teaser on YouTube
-        const anyTeaser = results.find(v => v.type === 'Teaser' && v.site === 'YouTube');
-        if (anyTeaser) return `https://www.youtube.com/watch?v=${anyTeaser.key}`;
-
-        // Priority 5: Any YouTube video (Clip, Featurette, etc.)
-        const anyVideo = results.find(v => v.site === 'YouTube');
-        if (anyVideo) return `https://www.youtube.com/watch?v=${anyVideo.key}`;
-        
-        return null;
+        // Priority: Trailer → Teaser → any YouTube video; preferred language first at each step.
+        const found = pickVideo(isTrailer) || pickVideo(isTeaser) || pickVideo(isYT);
+        return found ? ytWatchUrl(found.key) : null;
     } catch (error) {
         console.error('Error getting TMDB trailer:', error);
         return null;
@@ -99,34 +134,15 @@ async function getTMDBTrailer(tmdbId, mediaType) {
 }
 
 function buildFallbackSearchStreams(name, year) {
-    const streams = [];
-
     if (year) {
-        const queryWithTrailer = `${name} ${year} trailer`;
-        const queryBroad = `${name} (${year})`;
-        streams.push({
-            name: '🔍 Search Trailer (Title + Year)',
-            title: `Search: "${queryWithTrailer}"`,
-            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(queryWithTrailer)}`,
-            behaviorHints: { notWebReady: true, bingeGroup: 'trailer' }
-        });
-        streams.push({
-            name: '🎬 Search on YouTube',
-            title: `Search: "${queryBroad}"`,
-            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(queryBroad)}`,
-            behaviorHints: { notWebReady: true, bingeGroup: 'trailer' }
-        });
-    } else {
-        const query = `${name} official trailer`;
-        streams.push({
-            name: '🔍 Search Trailer',
-            title: `Search for "${query}"`,
-            externalUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
-            behaviorHints: { notWebReady: true, bingeGroup: 'trailer' }
-        });
+        return [
+            makeStream('🔍 Search Trailer (Title + Year)', `Search: "${name} ${year} trailer"`,   ytSearchUrl(`${name} ${year} trailer`)),
+            makeStream('🎬 Search on YouTube',             `Search: "${name} (${year})"`,          ytSearchUrl(`${name} (${year})`)),
+        ];
     }
-
-    return streams;
+    return [
+        makeStream('🔍 Search Trailer', `Search for "${name} official trailer"`, ytSearchUrl(`${name} official trailer`)),
+    ];
 }
 
 const addonInterface = {
@@ -140,15 +156,11 @@ const addonInterface = {
                 
                 if (!tmdbInfo) {
                     return {
-                        streams: [{
-                            name: '🎬 Search Trailer on YouTube',
-                            title: 'Search for trailer',
-                            externalUrl: `https://www.youtube.com/results?search_query=${imdbId}+official+trailer`,
-                            behaviorHints: { 
-                                notWebReady: true,
-                                bingeGroup: 'trailer'
-                            }
-                        }]
+                        streams: [makeStream(
+                            '🎬 Search Trailer on YouTube',
+                            'Search for trailer',
+                            ytSearchUrl(`${imdbId} official trailer`)
+                        )]
                     };
                 }
                 
@@ -156,15 +168,7 @@ const addonInterface = {
                 
                 if (trailerUrl) {
                     return {
-                        streams: [{
-                            name: '▶️ Watch Trailer',
-                            title: `${tmdbInfo.name} - Official Trailer`,
-                            externalUrl: trailerUrl,
-                            behaviorHints: { 
-                                notWebReady: true,
-                                bingeGroup: 'trailer'
-                            }
-                        }]
+                        streams: [makeStream('▶️ Watch Trailer', `${tmdbInfo.name} - Official Trailer`, trailerUrl)]
                     };
                 } else {
                     return { streams: buildFallbackSearchStreams(tmdbInfo.name, tmdbInfo.year) };

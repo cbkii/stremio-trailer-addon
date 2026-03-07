@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vercel dev"
   },
+  "engines": {
+    "node": ">=12"
+  },
   "keywords": ["stremio", "addon", "trailer", "youtube", "serverless"],
   "author": "",
   "license": "MIT",
