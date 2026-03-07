@@ -118,14 +118,14 @@ async function getTMDBTrailer(tmdbId, mediaType) {
         // Returns the best match for predicate: preferred-language first,
         // then any-language fallback (unless LANGUAGE_STRICT is enabled).
         const pickVideo = predicate =>
-            findPreferred(predicate) ?? (!LANGUAGE_STRICT ? results.find(predicate) : undefined);
+            findPreferred(predicate) || (!LANGUAGE_STRICT ? results.find(predicate) : undefined);
 
         const isYT      = v => v.site === 'YouTube';
         const isTrailer = v => v.type === 'Trailer' && isYT(v);
         const isTeaser  = v => v.type === 'Teaser'  && isYT(v);
 
         // Priority: Trailer → Teaser → any YouTube video; preferred language first at each step.
-        const found = pickVideo(isTrailer) ?? pickVideo(isTeaser) ?? pickVideo(isYT);
+        const found = pickVideo(isTrailer) || pickVideo(isTeaser) || pickVideo(isYT);
         return found ? ytWatchUrl(found.key) : null;
     } catch (error) {
         console.error('Error getting TMDB trailer:', error);
