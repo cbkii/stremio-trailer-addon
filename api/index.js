@@ -28,7 +28,7 @@ const manifest = {
     id: 'com.trailers.youtube.addon',
     version: '1.0.1',
     name: 'YouTube Trailers',
-    description: 'Direct links to YouTube trailers - No buffering!',
+    description: 'Direct link YouTube trailers and teasers (with fallbacks)',
     resources: ['stream'],
     types: ['movie', 'series'],
     catalogs: [],
