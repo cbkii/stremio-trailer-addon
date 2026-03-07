@@ -30,7 +30,7 @@ const LANGUAGE_STRICT = ['1', 'true', 'yes'].includes(
 
 const manifest = {
     id: 'com.trailers.youtube.addon',
-    version: '1.0.1',
+    version: '1.1.1',
     name: 'YouTube Trailers',
     description: 'Direct link YouTube trailers and teasers (with fallbacks)',
     resources: ['stream'],
