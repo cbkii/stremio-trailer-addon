@@ -75,7 +75,7 @@ All settings are configured via **Vercel Environment Variables** (Settings → E
 
 ### `LANGUAGE_PREF`
 
-A comma-separated list of [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) language codes listed in priority order. Trailers matching the first code are returned first, then the second, and so on.
+A comma-separated list of [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) language codes in priority order. **The order matters** — when trailers in multiple preferred languages exist, the language listed first always wins. Codes are case-insensitive.
 
 **Valid language code examples:**
 

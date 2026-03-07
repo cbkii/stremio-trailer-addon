@@ -3,18 +3,22 @@ const fetch = require('node-fetch');
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
-// Language preference: list one or more ISO 639-1 language codes in priority order.
-// The first code listed is the highest priority. English is the default.
+// Language preference: comma-separated ISO 639-1 language codes in priority order.
+// The FIRST code listed has the highest priority — when multiple preferred languages
+// are available, the one listed earliest is always returned first. English is the default.
 // Examples:
 //   'en'  - English        'es'  - Spanish       'pt'  - Portuguese
 //   'fr'  - French         'it'  - Italian        'nl'  - Dutch
 //   'de'  - German         'id'  - Indonesian     'hi'  - Hindi
 //   'zh'  - Chinese        'ko'  - Korean         'ja'  - Japanese
 //   'no'  - Norwegian      'sv'  - Swedish
-const LANGUAGE_PREF = (process.env.LANGUAGE_PREF || 'en')
-    .split(',')
-    .map(l => l.trim())
-    .filter(Boolean);
+const LANGUAGE_PREF = (() => {
+    const parsed = (process.env.LANGUAGE_PREF || 'en')
+        .split(',')
+        .map(code => code.trim().toLowerCase())
+        .filter(Boolean);
+    return parsed.length > 0 ? parsed : ['en'];
+})();
 
 // Language strictness: set to 1 (or any truthy value) to only return results
 // that match LANGUAGE_PREF. When disabled (0 / falsy, the default), preferred
@@ -83,14 +87,20 @@ async function getTMDBTrailer(tmdbId, mediaType) {
         const data = await response.json();
         
         const results = data.results || [];
-        const prefLang = v => LANGUAGE_PREF.includes(v.iso_639_1);
 
-        // Priority 1: Trailer in a preferred language
-        const trailer = results.find(v =>
-            v.type === 'Trailer' &&
-            v.site === 'YouTube' &&
-            prefLang(v)
-        );
+        // Returns the first result matching predicate, honoring LANGUAGE_PREF order:
+        // iterates preferred languages in declared order so the highest-priority
+        // language always wins, regardless of the order TMDB returns results.
+        const findPreferred = predicate => {
+            for (const lang of LANGUAGE_PREF) {
+                const match = results.find(v => predicate(v) && v.iso_639_1 === lang);
+                if (match) return match;
+            }
+            return undefined;
+        };
+
+        // Priority 1: Trailer in a preferred language (respects LANGUAGE_PREF order)
+        const trailer = findPreferred(v => v.type === 'Trailer' && v.site === 'YouTube');
         if (trailer) return `https://www.youtube.com/watch?v=${trailer.key}`;
 
         // Priority 2: Any Trailer on YouTube (skipped when strict)
@@ -99,12 +109,8 @@ async function getTMDBTrailer(tmdbId, mediaType) {
             if (anyTrailer) return `https://www.youtube.com/watch?v=${anyTrailer.key}`;
         }
 
-        // Priority 3: Teaser in a preferred language
-        const teaser = results.find(v =>
-            v.type === 'Teaser' &&
-            v.site === 'YouTube' &&
-            prefLang(v)
-        );
+        // Priority 3: Teaser in a preferred language (respects LANGUAGE_PREF order)
+        const teaser = findPreferred(v => v.type === 'Teaser' && v.site === 'YouTube');
         if (teaser) return `https://www.youtube.com/watch?v=${teaser.key}`;
 
         // Priority 4: Any Teaser on YouTube (skipped when strict)
@@ -113,8 +119,8 @@ async function getTMDBTrailer(tmdbId, mediaType) {
             if (anyTeaser) return `https://www.youtube.com/watch?v=${anyTeaser.key}`;
         }
 
-        // Priority 5: Any YouTube video in a preferred language
-        const prefVideo = results.find(v => v.site === 'YouTube' && prefLang(v));
+        // Priority 5: Any YouTube video in a preferred language (respects LANGUAGE_PREF order)
+        const prefVideo = findPreferred(v => v.site === 'YouTube');
         if (prefVideo) return `https://www.youtube.com/watch?v=${prefVideo.key}`;
 
         // Priority 6: Any YouTube video (skipped when strict)
