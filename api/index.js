@@ -139,7 +139,7 @@ function buildFallbackSearchStreams(name, year) {
     return [
         makeStream(
             '🔍 Search Trailer',
-            `Official Trailer not found, click to search for ${displayName} trailers and teasers`,
+            `Find ${displayName} trailer on YouTube. (Official link not found)`,
             ytSearchUrl(query)
         ),
     ];
@@ -158,7 +158,7 @@ const addonInterface = {
                     return {
                         streams: [makeStream(
                             '🔍 Search Trailer',
-                            `Official Trailer not found, click to search for ${imdbId} trailers and teasers`,
+                            `Find ${imdbId} trailer on YouTube. (Official link not found)`,
                             ytSearchUrl(`${imdbId} trailer|teaser`)
                         )]
                     };
@@ -168,7 +168,7 @@ const addonInterface = {
                 
                 if (trailerUrl) {
                     return {
-                        streams: [makeStream('▶️ Watch Trailer', `${tmdbInfo.name} - Official Trailer`, trailerUrl)]
+                        streams: [makeStream('▶️ Watch Trailer', `${tmdbInfo.name} 🎬 Trailer`, trailerUrl)]
                     };
                 } else {
                     return { streams: buildFallbackSearchStreams(tmdbInfo.name, tmdbInfo.year) };
