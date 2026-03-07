@@ -48,6 +48,11 @@ Click **Fork** at the top of this page to create your own copy.
    ```
    https://your-project.vercel.app/manifest.json
    ```
+   For example:
+   ```
+   https://my-stremio-trailer-addon-rust.vercel.app/manifest.json
+   # i.e. Vercel "Project Domain" + /manifest.json
+   ```
 
 ### Step 4: Install in Stremio
 
