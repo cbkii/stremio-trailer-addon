@@ -134,14 +134,14 @@ async function getTMDBTrailer(tmdbId, mediaType) {
 }
 
 function buildFallbackSearchStreams(name, year) {
-    if (year) {
-        return [
-            makeStream('🔍 Search Trailer (Title + Year)', `Search: "${name} ${year} trailer"`,   ytSearchUrl(`${name} ${year} trailer`)),
-            makeStream('🎬 Search on YouTube',             `Search: "${name} (${year})"`,          ytSearchUrl(`${name} (${year})`)),
-        ];
-    }
+    const displayName = year ? `${name} ${year}` : name;
+    const query = year ? `${name} ${year} trailer|teaser` : `${name} trailer|teaser`;
     return [
-        makeStream('🔍 Search Trailer', `Search for "${name} official trailer"`, ytSearchUrl(`${name} official trailer`)),
+        makeStream(
+            '🔍 Search Trailer',
+            `Official Trailer not found, click to search for ${displayName} trailers and teasers`,
+            ytSearchUrl(query)
+        ),
     ];
 }
 
@@ -157,9 +157,9 @@ const addonInterface = {
                 if (!tmdbInfo) {
                     return {
                         streams: [makeStream(
-                            '🎬 Search Trailer on YouTube',
-                            'Search for trailer',
-                            ytSearchUrl(`${imdbId} official trailer`)
+                            '🔍 Search Trailer',
+                            `Official Trailer not found, click to search for ${imdbId} trailers and teasers`,
+                            ytSearchUrl(`${imdbId} trailer|teaser`)
                         )]
                     };
                 }
