@@ -159,8 +159,16 @@ After changing any environment variable, go to **Deployments → "…" → Redep
 ## 📊 Dependencies
 
 - [stremio-addon-sdk](https://github.com/Stremio/stremio-addon-sdk) - Stremio add-on framework
-- [node-fetch](https://github.com/node-fetch/node-fetch) - HTTP requests
+- [node-fetch](https://github.com/node-fetch/node-fetch) - HTTP requests (v2, CommonJS)
 - [TMDB API](https://www.themoviedb.org/documentation/api) - Movie/series metadata
+
+### ⚠️ Known Security Advisories
+
+`stremio-addon-sdk >=1.0.1` transitively depends on `path-to-regexp <=0.1.11`
+([GHSA-9wv6-86v2-598j](https://github.com/advisories/GHSA-9wv6-86v2-598j), [GHSA-rhx6-c78j-4q9w](https://github.com/advisories/GHSA-rhx6-c78j-4q9w), high severity — ReDoS).
+The only upstream fix (`stremio-addon-sdk@0.7.1`) is a breaking downgrade and is not applied here.
+**Mitigation:** Vercel's edge network performs URL validation before requests reach the function,
+and URL path lengths on Vercel are bounded, significantly reducing real-world ReDoS risk.
 
 ## 🆓 Cost
 
