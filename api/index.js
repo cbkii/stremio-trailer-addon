@@ -1,7 +1,27 @@
 const { getRouter } = require('stremio-addon-sdk');
-const fetch = require('node-fetch');
 
+// Prefer Read Access Token (bearer) over legacy API key.
+// Set TMDB_READ_ACCESS_TOKEN in Vercel env vars for the recommended auth method,
+// or fall back to TMDB_API_KEY (v3 key appended as a query param).
+const TMDB_BEARER_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+
+// Build a TMDB API URL.  When using bearer auth the api_key param is omitted.
+function tmdbUrl(path) {
+    const base = `https://api.themoviedb.org/3${path}`;
+    if (TMDB_BEARER_TOKEN) return base;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}api_key=${TMDB_API_KEY}`;
+}
+
+// Fetch wrapper that injects the correct TMDB auth header and an abort signal.
+// Callers must verify that at least one auth credential is configured before
+// calling this function (see the hasAuth guards in getTMDBInfo / getTMDBTrailer).
+function tmdbFetch(path, signal) {
+    const headers = { Accept: 'application/json' };
+    if (TMDB_BEARER_TOKEN) headers['Authorization'] = `Bearer ${TMDB_BEARER_TOKEN}`;
+    return fetch(tmdbUrl(path), { headers, signal });
+}
 
 // Language preference: comma-separated ISO 639-1 language codes in priority order.
 // The FIRST code listed has the highest priority — when multiple preferred languages
@@ -39,16 +59,14 @@ const manifest = {
     idPrefixes: ['tt'],
     background: 'https://www.gstatic.com/marketing-cms/assets/images/99/75/ba9b20c04dc2b37c7165e70ba215/external-icon-core-2.png%3Dn-w908-h511-fcrop64%3D1%2C00000000ffffffff-rw',
     logo: 'https://developers.google.com/static/youtube/images/developed-with-youtube-sentence-case-light.png',
-    // Certificação Stremio Addons
-    stremioAddonsConfig: {
-        issuer: 'https://stremio-addons.net',
-        signature: 'eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..pB-EC9zlZduz6a-zU0OxsQ.R_CydhOhJx12LAA6b5K_c7GxYcxMu0e1FlAGC9elpvhCZJPtVMwdsTEnbMXROVZL9FNBERr9Z2kF45wFQN7uLN5fHXV3MmSqGmO2hHnic-oc3vcbzQ0rl2LUmo8uTXM8.1uu_6hsolyXULB6kmaghdQ'
-    }
 };
 
 // ---- Shared stream helpers ----
 
-const STREAM_HINTS = { notWebReady: true, bingeGroup: 'trailer' };
+// notWebReady is intentionally omitted: externalUrl hands off to the OS/app and
+// is valid in web contexts too.  bingeGroup ensures consistent trailer-stream
+// selection when binge-watching a series.
+const STREAM_HINTS = { bingeGroup: 'trailer' };
 
 function ytWatchUrl(key) {
     return `https://www.youtube.com/watch?v=${key}`;
@@ -58,8 +76,10 @@ function ytSearchUrl(query) {
     return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 }
 
-function makeStream(name, title, externalUrl) {
-    return { name, title, externalUrl, behaviorHints: STREAM_HINTS };
+// Build a stream object per the Stremio stream schema.
+// `description` is the current field name; the old `title` field is deprecated.
+function makeStream(name, description, externalUrl) {
+    return { name, description, externalUrl, behaviorHints: STREAM_HINTS };
 }
 
 function extractYear(dateString) {
@@ -71,14 +91,23 @@ function extractYear(dateString) {
     return m[1];
 }
 
+// Per-request timeout (ms).  Two sequential TMDB calls × 4 s each = 8 s worst
+// case, safely within the Vercel Hobby 10 s function limit.
+const TMDB_TIMEOUT_MS = 4000;
+
 async function getTMDBInfo(imdbId, type) {
-    if (!TMDB_API_KEY) return null;
-    
+    const hasAuth = TMDB_BEARER_TOKEN || TMDB_API_KEY;
+    if (!hasAuth) return null;
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), TMDB_TIMEOUT_MS);
     try {
-        const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
-        const response = await fetch(url);
+        const response = await tmdbFetch(
+            `/find/${imdbId}?external_source=imdb_id`,
+            ac.signal
+        );
         const data = await response.json();
-        
+
         if (type === 'movie' && data.movie_results && data.movie_results.length > 0) {
             const movie = data.movie_results[0];
             return { id: movie.id, name: movie.title, type: 'movie', year: extractYear(movie.release_date) };
@@ -86,20 +115,24 @@ async function getTMDBInfo(imdbId, type) {
             const series = data.tv_results[0];
             return { id: series.id, name: series.name, type: 'tv', year: extractYear(series.first_air_date) };
         }
-        
+
         return null;
     } catch (error) {
         console.error('Error getting TMDB info:', error);
         return null;
+    } finally {
+        clearTimeout(timer);
     }
 }
 
 async function getTMDBTrailer(tmdbId, mediaType) {
-    if (!TMDB_API_KEY) return null;
-    
+    const hasAuth = TMDB_BEARER_TOKEN || TMDB_API_KEY;
+    if (!hasAuth) return null;
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), TMDB_TIMEOUT_MS);
     try {
-        const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/videos?api_key=${TMDB_API_KEY}`;
-        const response = await fetch(url);
+        const response = await tmdbFetch(`/${mediaType}/${tmdbId}/videos`, ac.signal);
         const data = await response.json();
         
         const results = data.results || [];
@@ -130,6 +163,8 @@ async function getTMDBTrailer(tmdbId, mediaType) {
     } catch (error) {
         console.error('Error getting TMDB trailer:', error);
         return null;
+    } finally {
+        clearTimeout(timer);
     }
 }
 

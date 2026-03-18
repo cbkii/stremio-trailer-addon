@@ -7,13 +7,12 @@
     "dev": "vercel dev"
   },
   "engines": {
-    "node": ">=12"
+    "node": ">=18"
   },
   "keywords": ["stremio", "addon", "trailer", "youtube", "serverless"],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "stremio-addon-sdk": "^1.6.9",
-    "node-fetch": "^2.6.7"
+    "stremio-addon-sdk": "^1.6.9"
   }
 }

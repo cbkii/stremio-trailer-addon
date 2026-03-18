@@ -22,13 +22,13 @@ A serverless Stremio add-on that provides **direct links to YouTube trailers** -
 - Vercel account (free)
 - TMDB API key (free)
 
-### Step 1: Get a TMDB API Key
+### Step 1: Get TMDB credentials
 
 1. Sign up at [themoviedb.org](https://www.themoviedb.org/)
 2. Go to **Settings → API**
 3. Request an API Key → choose **"Developer"**
 4. Fill out the form (any reasonable details)
-5. Copy your **API Key (v3 auth)**
+5. Copy your **Read Access Token** (recommended) from the API settings page, **or** your **API Key (v3 auth)** as a fallback
 
 ### Step 2: Fork this repository
 
@@ -40,7 +40,8 @@ Click **Fork** at the top of this page to create your own copy.
 2. Click **"Add New… → Project"**
 3. Select your forked repository and click **"Import"**
 4. **Configure Environment Variables** (see [Configuration](#-configuration) below):
-   - `TMDB_API_KEY` — your TMDB API key *(required)*
+   - `TMDB_READ_ACCESS_TOKEN` — your TMDB Read Access Token *(recommended)*
+   - `TMDB_API_KEY` — your TMDB v3 API key *(alternative if you don't use the token)*
    - `LANGUAGE_PREF` — preferred language codes *(optional, default: `en`)*
    - `LANGUAGE_STRICT` — language strictness *(optional, default: `0`)*
 5. Click **"Deploy"**
@@ -65,7 +66,8 @@ All settings are configured via **Vercel Environment Variables** (Settings → E
 
 | Variable | Default | Description |
 |---|---|---|
-| `TMDB_API_KEY` | *(none)* | **Required.** Your TMDB v3 API key. |
+| `TMDB_API_KEY` | *(none)* | TMDB v3 API key. Used when `TMDB_READ_ACCESS_TOKEN` is not set. |
+| `TMDB_READ_ACCESS_TOKEN` | *(none)* | **Preferred.** TMDB Read Access Token (v4 bearer auth). Set this instead of `TMDB_API_KEY` for better security — the token is sent in the `Authorization` header rather than in the URL. At least one of `TMDB_API_KEY` or `TMDB_READ_ACCESS_TOKEN` must be set. |
 | `LANGUAGE_PREF` | `en` | Comma-separated list of preferred ISO 639-1 language codes, in priority order. |
 | `LANGUAGE_STRICT` | `0` | Set to `1` to only return results in the preferred language(s). |
 
@@ -144,8 +146,8 @@ After changing any environment variable, go to **Deployments → "…" → Redep
 - The add-on uses `externalUrl` which forces external playback
 
 ### Trailers not appearing
-- Verify `TMDB_API_KEY` is set in Vercel Environment Variables
-- Redeploy after adding/changing the API key
+- Verify `TMDB_READ_ACCESS_TOKEN` (or `TMDB_API_KEY`) is set in Vercel Environment Variables
+- Redeploy after adding/changing the API credentials
 - Some titles may not have trailers available on TMDB
 
 ### No trailers in my language
@@ -159,8 +161,8 @@ After changing any environment variable, go to **Deployments → "…" → Redep
 ## 📊 Dependencies
 
 - [stremio-addon-sdk](https://github.com/Stremio/stremio-addon-sdk) - Stremio add-on framework
-- [node-fetch](https://github.com/node-fetch/node-fetch) - HTTP requests
 - [TMDB API](https://www.themoviedb.org/documentation/api) - Movie/series metadata
+- Node.js native `fetch` (Node 18+) - HTTP requests (no extra package needed)
 
 ## 🆓 Cost
 
