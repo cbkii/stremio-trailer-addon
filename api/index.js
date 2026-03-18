@@ -126,7 +126,7 @@ function getStatusPayload(req) {
     else if (manifestAvailable) status = 'degraded';
 
     return {
-        ok: manifestAvailable,
+        ok: status === 'online',
         status,
         manifestUrl,
         installUrl,
