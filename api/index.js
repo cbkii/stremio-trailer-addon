@@ -341,9 +341,10 @@ module.exports = (req, res) => {
     }
 
     if (path === '/healthz') {
-        res.statusCode = 200;
+        const payload = getStatusPayload(req);
+        res.statusCode = payload.ok ? 200 : 503;
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.end(JSON.stringify(getStatusPayload(req)));
+        res.end(JSON.stringify(payload));
         return;
     }
 
