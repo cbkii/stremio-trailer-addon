@@ -91,6 +91,117 @@ function extractYear(dateString) {
     return m[1];
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function firstHeaderValue(value) {
+    if (typeof value !== 'string') return '';
+    return value.split(',')[0].trim();
+}
+
+function getBaseUrls(req) {
+    const protoHeader = firstHeaderValue(req.headers['x-forwarded-proto']);
+    const hostHeader = firstHeaderValue(req.headers['x-forwarded-host']) || firstHeaderValue(req.headers.host);
+    const proto = protoHeader || (req.socket && req.socket.encrypted ? 'https' : 'http');
+    const host = hostHeader || 'localhost';
+    return {
+        manifestUrl: `${proto}://${host}/manifest.json`,
+        installUrl: `stremio://${host}/manifest.json`,
+    };
+}
+
+function getStatusPayload(req) {
+    const { manifestUrl, installUrl } = getBaseUrls(req);
+    const manifestAvailable = Boolean(manifest && manifest.id && manifest.name);
+    const tmdbConfigured = Boolean(TMDB_BEARER_TOKEN || TMDB_API_KEY);
+
+    let status = 'misconfigured';
+    if (manifestAvailable && tmdbConfigured) status = 'online';
+    else if (manifestAvailable) status = 'degraded';
+
+    return {
+        ok: status === 'online',
+        status,
+        manifestUrl,
+        installUrl,
+        manifestAvailable,
+        tmdbConfigured,
+        version: manifestAvailable ? manifest.version : null,
+        name: manifestAvailable ? manifest.name : 'Stremio Add-on',
+    };
+}
+
+function renderStatusPill(label, tone) {
+    return `<span class="pill ${tone}">${escapeHtml(label)}</span>`;
+}
+
+function renderLandingPage(req) {
+    const status = getStatusPayload(req);
+    const appLabel = status.status === 'online' ? 'App: Online' : status.status === 'degraded' ? 'App: Degraded' : 'App: Misconfigured';
+    const appTone = status.status === 'online' ? 'ok' : status.status === 'degraded' ? 'warn' : 'bad';
+    const manifestLabel = `Manifest: ${status.manifestAvailable ? 'Available' : 'Unavailable'}`;
+    const manifestTone = status.manifestAvailable ? 'ok' : 'bad';
+    const tmdbLabel = `Trailer source: ${status.tmdbConfigured ? 'Configured' : 'Not configured'}`;
+    const tmdbTone = status.tmdbConfigured ? 'ok' : 'warn';
+    const versionText = status.version ? `Version ${escapeHtml(status.version)}` : 'Version unavailable';
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(status.name)} · Stremio Add-on</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#0b0c10;color:#f3f4f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+main{width:min(760px,100%)}
+.card{background:#11131a;border:1px solid #252a37;border-radius:20px;padding:28px;box-shadow:0 10px 35px rgba(0,0,0,.35),0 0 0 1px rgba(125,145,255,.06) inset}
+h1{margin:0 0 8px;font-size:clamp(1.8rem,4.5vw,2.5rem);line-height:1.1}
+p{margin:0;color:#c7cfdb;font-size:clamp(1rem,2.2vw,1.15rem)}
+.status{margin:22px 0;display:flex;flex-wrap:wrap;gap:10px}
+.pill{display:inline-flex;align-items:center;padding:.45rem .8rem;border-radius:999px;font-size:.95rem;font-weight:600;border:1px solid transparent}
+.pill.ok{background:#102617;color:#9ff0b5;border-color:#244733}
+.pill.warn{background:#2b2210;color:#ffd48a;border-color:#5a4521}
+.pill.bad{background:#2a1316;color:#ffb3b8;border-color:#5d232a}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
+.btn{display:inline-block;padding:.82rem 1.15rem;border-radius:12px;font-weight:700;text-decoration:none;text-align:center;min-width:190px}
+.btn.primary{background:#5066ff;color:#fff;border:1px solid #6174ff}
+.btn.secondary{background:#171b25;color:#e3e8f3;border:1px solid #2c3447}
+.btn:focus-visible{outline:2px solid #8ea1ff;outline-offset:2px}
+.note{margin-top:14px;font-size:.95rem;color:#9aa5bb}
+footer{margin-top:18px;font-size:.9rem;color:#8b95aa}
+@media (min-width:1200px){.card{padding:34px}.btn{padding:.95rem 1.25rem;font-size:1.05rem}}
+</style>
+</head>
+<body>
+<main>
+  <article class="card" aria-label="Add-on status and install">
+    <h1>${escapeHtml(status.name)}</h1>
+    <p>Watch movie and series trailers quickly in Stremio with one tap.</p>
+    <div class="status" aria-label="Current service status">
+      ${renderStatusPill(appLabel, appTone)}
+      ${renderStatusPill(manifestLabel, manifestTone)}
+      ${renderStatusPill(tmdbLabel, tmdbTone)}
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="${escapeHtml(status.installUrl)}">Install in Stremio</a>
+      <a class="btn secondary" href="${escapeHtml(status.manifestUrl)}">Open manifest</a>
+    </div>
+    <p class="note">If the app is not installed yet, use the install button first.</p>
+    <footer>Works with Stremio using the manifest link above · ${versionText}</footer>
+  </article>
+</main>
+</body>
+</html>`;
+}
+
 // Per-request timeout (ms).  Two sequential TMDB calls × 4 s each = 8 s worst
 // case, safely within the Vercel Hobby 10 s function limit.
 const TMDB_TIMEOUT_MS = 4000;
@@ -134,7 +245,7 @@ async function getTMDBTrailer(tmdbId, mediaType) {
     try {
         const response = await tmdbFetch(`/${mediaType}/${tmdbId}/videos`, ac.signal);
         const data = await response.json();
-        
+
         const results = data.results || [];
 
         // Returns the first result matching predicate, honoring LANGUAGE_PREF order:
@@ -153,9 +264,9 @@ async function getTMDBTrailer(tmdbId, mediaType) {
         const pickVideo = predicate =>
             findPreferred(predicate) || (!LANGUAGE_STRICT ? results.find(predicate) : undefined);
 
-        const isYT      = v => v.site === 'YouTube';
+        const isYT = v => v.site === 'YouTube';
         const isTrailer = v => v.type === 'Trailer' && isYT(v);
-        const isTeaser  = v => v.type === 'Teaser'  && isYT(v);
+        const isTeaser = v => v.type === 'Teaser' && isYT(v);
 
         // Priority: Trailer → Teaser → any YouTube video; preferred language first at each step.
         const found = pickVideo(isTrailer) || pickVideo(isTeaser) || pickVideo(isYT);
@@ -185,10 +296,10 @@ const addonInterface = {
     get: async (resource, type, id) => {
         if (resource === 'stream') {
             const imdbId = id.split(':')[0];
-            
+
             try {
                 const tmdbInfo = await getTMDBInfo(imdbId, type);
-                
+
                 if (!tmdbInfo) {
                     return {
                         streams: [makeStream(
@@ -198,9 +309,9 @@ const addonInterface = {
                         )]
                     };
                 }
-                
+
                 const trailerUrl = await getTMDBTrailer(tmdbInfo.id, tmdbInfo.type);
-                
+
                 if (trailerUrl) {
                     return {
                         streams: [makeStream('▶️ Watch Trailer', `${tmdbInfo.name} 🎬 Trailer`, trailerUrl)]
@@ -220,6 +331,23 @@ const addonInterface = {
 const router = getRouter(addonInterface);
 
 module.exports = (req, res) => {
+    const path = req.url ? req.url.split('?')[0] : '/';
+
+    if (path === '/') {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(renderLandingPage(req));
+        return;
+    }
+
+    if (path === '/healthz') {
+        const payload = getStatusPayload(req);
+        res.statusCode = payload.ok ? 200 : 503;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(payload));
+        return;
+    }
+
     router(req, res, () => {
         res.statusCode = 404;
         res.end();
