@@ -28,7 +28,7 @@ A serverless Stremio add-on that provides **direct links to YouTube trailers** -
 2. Go to **Settings → API**
 3. Request an API Key → choose **"Developer"**
 4. Fill out the form (any reasonable details)
-5. Copy your **Read Access Token** (recommended) from the API settings page, **or** your **API Key (v3 auth)** as a fallback
+5. Copy your **Read Access Token** (recommended) — on the API settings page look for the section labelled **"API Read Access Token (v4 auth)"** — **or** your **API Key (v3 auth)** as a fallback
 
 ### Step 2: Fork this repository
 
